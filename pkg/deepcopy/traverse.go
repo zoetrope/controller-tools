@@ -208,6 +208,7 @@ type copyMethodMaker struct {
 	pkg *loader.Package
 	*importsList
 	*codeWriter
+	hasApplyConfiguration bool
 }
 
 // GenerateMethodsFor makes DeepCopy, DeepCopyInto, and DeepCopyObject methods
@@ -510,7 +511,7 @@ func (c *copyMethodMaker) genStructDeepCopy(_ *namingInfo, structType *types.Str
 
 // genPointerDeepCopy generates DeepCopy code for the given named type whose
 // underlying type is the given struct.
-func (c *copyMethodMaker) genPointerDeepCopy(_ *namingInfo, pointerType *types.Pointer) {
+func (c *copyMethodMaker) genPointerDeepCopy(info *namingInfo, pointerType *types.Pointer) {
 	underlyingElem := eventualUnderlyingType(pointerType.Elem())
 
 	// if we have a manually written deepcopy, just use that
@@ -544,6 +545,13 @@ func (c *copyMethodMaker) genPointerDeepCopy(_ *namingInfo, pointerType *types.P
 			c.Line("in, out := *in, *out")
 			c.genDeepCopyIntoBlock(&namingInfo{typeInfo: underlyingElem}, eventualUnderlyingType(underlyingElem))
 		})
+		return
+	}
+
+	if isApplyConfiguration(info) {
+		c.hasApplyConfiguration = true
+		c.Linef("*out = new(%[1]s)", (&namingInfo{typeInfo: pointerType.Elem()}).Syntax(c.pkg, c.importsList))
+		c.Line("deepCopy(out, in)")
 		return
 	}
 
@@ -784,6 +792,10 @@ func passesByReference(typeInfo types.Type) bool {
 	default:
 		return false
 	}
+}
+
+func isApplyConfiguration(info *namingInfo) bool {
+	return strings.HasPrefix(info.typeInfo.String(), "*k8s.io/client-go/applyconfigurations/")
 }
 
 var (
